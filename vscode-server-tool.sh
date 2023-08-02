@@ -2,10 +2,11 @@
 # MIT License
 # Copyright (c) [2023] [zongou@outlook.com]
 
+# yarn config set registry https://registry.npmmirror.com
+
 set -e -u
 # Configurations
 is_cn_proxy() { false; }
-GITHUB_REPO_PREFIX='https://github.com'
 APP_DIR="./code-server"
 # Test
 is_termux() { test "${TERMUX_VERSION+1}"; }
@@ -17,31 +18,12 @@ DEF='\033[0m'
 msg() { printf "%s${*}\n" '' >&2; }
 exit_on_error() { msg "${RED}ERROR: ${DEF}${*}" && exit 1; }
 
-alpine_setup_build_env() {
-    apk add alpine-sdk libstdc++ libc6-compat libsecret-dev python3 yarn
-}
-
-termux_setup_build_env() {
-    apt install build-essential binutils libandroid-spawn libsecret ripgrep python3 nodejs-lts yarn -y
-}
-
-# proxy for in China
-setup_cn_proxy() {
-    yarn config set registry https://registry.npmmirror.com
-    GITHUB_REPO_PREFIX='https://ghproxy.com/https://github.com'
-    # GITHUB_REPO_PREFIX='https://kgithub.com'
-}
-
 rebuild_borken_dependencies() {
     if test $# -gt 0 && test -d "$1"; then
         _TMP_APP_DIR="${1}"
         find "$_TMP_APP_DIR" -path "*/lib/vscode" -prune | while IFS= read -r dir; do
             msg "rebuild_broken_dependencies at ${dir}"
-            if is_alpine; then
-                (cd "$dir" && yarn)
-            elif is_termux; then
-                (cd "$dir" && yarn add @parcel/watcher@${GITHUB_REPO_PREFIX}/zongou/watcher.git#2.1.0)
-            fi
+            (cd "$dir" && yarn)
         done
     else
         exit_on_error "Please specify the app directory!"
@@ -61,17 +43,21 @@ patch_released_app() {
         (
             cd "${_TMP_BUILD_DIR}" &&
                 (
-                    if is_alpine; then
-                        # yarn add argon2@0.30.3 spdlog@0.13.6 node-pty@0.11.0-beta29 @parcel/watcher@2.1.0 keytar --ignore-engines
-                        yarn --ignore-engines add argon2 spdlog node-pty @parcel/watcher keytar
-                    elif is_termux; then
-                        # yarn --ignore-engines add argon2@0.30.3 spdlog@0.13.6 node-pty@0.11.0-beta29 @parcel/watcher@${GITHUB_REPO_PREFIX}/zongou/watcher.git#2.1.0 keytar
-                        yarn --ignore-engines add argon2 spdlog node-pty @parcel/watcher@${GITHUB_REPO_PREFIX}/zongou/watcher.git keytar
-                    fi
+                    # yarn add argon2@0.30.3 spdlog@0.13.6 node-pty@0.11.0-beta29 @parcel/watcher@2.1.0 keytar --ignore-engines
+                    # yarn --ignore-engines add argon2 spdlog node-pty @parcel/watcher keytar
+
+                    yarn --ignore-engines add spdlog node-pty "@parcel/watcher@npm:@parcel/watcher-$(
+                        if is_termux; then
+                            printf '%s' android-arm64
+                        elif is_alpine; then
+                            printf '%s' linux-arm64-musl
+                        fi
+                    )"
                 )
         )
 
-        for module_name in argon2 spdlog node-pty @parcel/watcher keytar; do
+        # for module_name in argon2 spdlog node-pty @parcel/watcher keytar; do
+        for module_name in spdlog node-pty @parcel/watcher; do
             find "${_TMP_APP_DIR}" \( -path "*/node_modules/${module_name}" -or -path "*/node_modules/@*/${module_name}" \) -prune | while IFS= read -r module_dir; do
                 echo "replace ${module_name} at ${module_dir}"
                 if test -d "${_TMP_BUILD_DIR}/node_modules/${module_name}"; then
@@ -125,9 +111,9 @@ termux_link_ripgrep() {
 
 setup_build_env() {
     if is_alpine; then
-        alpine_setup_build_env || exit 1
+        apk add alpine-sdk libstdc++ libc6-compat libsecret-dev python3 yarn || exit 1
     elif is_termux; then
-        termux_setup_build_env || exit 1
+        apt install build-essential binutils libandroid-spawn libsecret ripgrep python3 nodejs-lts yarn -y || exit 1
     else
         exit_on_error "this script is designed to build code-server on alpine and termux only!"
     fi
@@ -176,10 +162,6 @@ main() {
                 shift
                 _show_help
                 exit
-                ;;
-            --cn-proxy)
-                shift
-                is_cn_proxy() { true; }
                 ;;
             build)
                 shift
