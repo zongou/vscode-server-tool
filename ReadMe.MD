@@ -1,3 +1,7 @@
+你也许对从源码编译code server感兴趣
+我在另一个仓库提供了编译alpine和termux上可运行的
+<https://github.com/zongou/vscode>
+
 # 在termux或alpine上运行code-server/openvscode-server
 
 在termux上直接运行，非proot环境
